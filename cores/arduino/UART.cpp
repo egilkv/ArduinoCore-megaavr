@@ -76,7 +76,12 @@ void serialEventRun(void)
 #endif
 }
 
-// macro to guard critical sections when needed for large TX buffer sizes
+// macro to guard critical sections when needed for large RX and TX buffer sizes
+#if (SERIAL_RX_BUFFER_SIZE > 256)
+#define RX_BUFFER_ATOMIC ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+#else
+#define RX_BUFFER_ATOMIC
+#endif
 #if (SERIAL_TX_BUFFER_SIZE > 256)
 #define TX_BUFFER_ATOMIC ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
 #else
@@ -198,28 +203,39 @@ void UartClass::end()
 
 int UartClass::available(void)
 {
-    return ((unsigned int)(SERIAL_RX_BUFFER_SIZE + _rx_buffer_head - _rx_buffer_tail)) % SERIAL_RX_BUFFER_SIZE;
+    int n;
+    RX_BUFFER_ATOMIC {
+	n = ((unsigned int)(SERIAL_RX_BUFFER_SIZE + _rx_buffer_head - _rx_buffer_tail)) % SERIAL_RX_BUFFER_SIZE;
+    }
+    return n;
 }
 
 int UartClass::peek(void)
 {
-    if (_rx_buffer_head == _rx_buffer_tail) {
-        return -1;
-    } else {
-        return _rx_buffer[_rx_buffer_tail];
+    int c;
+    RX_BUFFER_ATOMIC {
+	if (_rx_buffer_head == _rx_buffer_tail) {
+	    c = -1;
+	} else {
+	    c = _rx_buffer[_rx_buffer_tail];
+	}
     }
+    return c;
 }
 
 int UartClass::read(void)
 {
-    // if the head isn't ahead of the tail, we don't have any characters
-    if (_rx_buffer_head == _rx_buffer_tail) {
-        return -1;
-    } else {
-        unsigned char c = _rx_buffer[_rx_buffer_tail];
-        _rx_buffer_tail = (rx_buffer_index_t)(_rx_buffer_tail + 1) % SERIAL_RX_BUFFER_SIZE;
-        return c;
+    int c;
+    RX_BUFFER_ATOMIC {
+	// if the head isn't ahead of the tail, we don't have any characters
+	if (_rx_buffer_head == _rx_buffer_tail) {
+	    c = -1;
+	} else {
+	    c = _rx_buffer[_rx_buffer_tail];
+	    _rx_buffer_tail = (rx_buffer_index_t)(_rx_buffer_tail + 1) % SERIAL_RX_BUFFER_SIZE;
+	}
     }
+    return c;
 }
 
 int UartClass::availableForWrite(void)
@@ -274,16 +290,26 @@ size_t UartClass::write(uint8_t c)
         return 1;
     }
 
-    tx_buffer_index_t i = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
+    // Sorry for the clunkiness of this loop, but it seems to be required to make it atomic
+    // Note that while head for tx is not changed by the tx interrupt, but needs to be atomic
+    // in case someone happens to use serial write in another interrupt, so prepare for that
+    for (;;) {
+	bool done = false;
+	TX_BUFFER_ATOMIC {
+	    tx_buffer_index_t nexthead;
+	    nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
+	    if (nexthead != _tx_buffer_tail) {
+		_tx_buffer[_tx_buffer_head] = c;
+		_tx_buffer_head = nexthead;
+		done = true;
+	    }
+	}
+	if (done) break;
 
-    //If the output buffer is full, there's nothing for it other than to
-    //wait for the interrupt handler to empty it a bit (or emulate interrupts)
-    while (i == _tx_buffer_tail) {
+	//The output buffer is full, so there's nothing for it other than to
+	//wait for the interrupt handler to empty it a bit (or emulate interrupts)
 	_tx_data_empty_soft();
     }
-
-    _tx_buffer[_tx_buffer_head] = c;
-    _tx_buffer_head = i;
 
     // Enable data "register empty interrupt"
     (*_hwserial_module).CTRLA |= USART_DREIE_bm;
