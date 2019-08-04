@@ -92,13 +92,6 @@ void serialEventRun(void)
 
 void UartClass::_tx_data_empty_irq(void)
 {
-    // Check if tx buffer already empty.
-    if (_tx_buffer_head == _tx_buffer_tail) {
-        // Buffer empty, so disable "data register empty" interrupt
-        (*_hwserial_module).CTRLA &= (~USART_DREIE_bm);
-        return;
-    }
-
     // There must be more data in the output
     // buffer. Send the next byte
     unsigned char c = _tx_buffer[_tx_buffer_tail];
@@ -125,9 +118,15 @@ void UartClass::_tx_data_empty_soft(void) {
 	// If it is set, pretend an interrupt has happened and call the handler
 	//to free up space for us.
 
-	// Invoke interrupt handler only if conditions data register is empty
+	// Invoke code for interrupt handler only if data register is empty
 	if ((*_hwserial_module).STATUS & USART_DREIF_bm) {
-	    _tx_data_empty_irq();
+	    // Check if tx buffer already empty.
+	    if (_tx_buffer_head == _tx_buffer_tail) {
+		// Buffer empty, so disable "data register empty" interrupt
+		(*_hwserial_module).CTRLA &= (~USART_DREIE_bm);
+	    } else {
+		_tx_data_empty_irq();
+	    }
 	}
     }
     // In case interrupts are enabled, the interrupt routine will be invoked by itself
