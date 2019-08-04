@@ -34,7 +34,7 @@
 // NOTE: a "power of 2" buffer size is reccomended to dramatically
 //       optimize all the modulo operations for ring buffers.
 // When buffer sizes are increased to > 256, the buffer index
-// variables are automatically increased in size, but the extra
+// variables are automatically increased in size, and extra
 // atomicity guards are implemented.
 #if !defined(SERIAL_TX_BUFFER_SIZE)
 #if ((RAMEND - RAMSTART) < 1023)

@@ -112,21 +112,13 @@ void UartClass::_tx_data_empty_irq(void)
 
 // To invoke data empty "interrupt" via a call, use this method
 void UartClass::_tx_data_empty_soft(void) {
-    if ( (!(SREG & CPU_I_bm)) || (!((*_hwserial_module).CTRLA & USART_DREIE_bm)) ) {
-	// Interrupts are disabled either globally or for data register empty,
-	// so we'll have to poll the "data register empty" flag ourselves.
-	// If it is set, pretend an interrupt has happened and call the handler
-	//to free up space for us.
+    if ( !(SREG & CPU_I_bm) ) {
+	// Interrupts are disabled globally, so the code here is an ATOMIC_BLOCK
+	// We'll have to poll the "data register empty" flag ourselves.
+	// Call the handler only if data register is empty and we know the buffer is non-empty
 
-	// Invoke code for interrupt handler only if data register is empty
-	if ((*_hwserial_module).STATUS & USART_DREIF_bm) {
-	    // Check if tx buffer already empty.
-	    if (_tx_buffer_head == _tx_buffer_tail) {
-		// Buffer empty, so disable "data register empty" interrupt
-		(*_hwserial_module).CTRLA &= (~USART_DREIE_bm);
-	    } else {
-		_tx_data_empty_irq();
-	    }
+	if (((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm)) {
+	   _tx_data_empty_irq();
 	}
     }
     // In case interrupts are enabled, the interrupt routine will be invoked by itself
@@ -278,13 +270,11 @@ size_t UartClass::write(uint8_t c)
     // to the data register and be done. This shortcut helps
     // significantly improve the effective data rate at high (>
     // 500kbit/s) bit rates, where interrupt overhead becomes a slowdown.
-    if ( (_tx_buffer_head == _tx_buffer_tail) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
+    // Note also that USART_DREIE_bm always will be clear if the buffer is
+    // empty.
+    if ( !((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
         (*_hwserial_module).TXDATAL = c;
         (*_hwserial_module).STATUS = USART_TXCIF_bm;
-
-        // Make sure data register empty interrupt is disabled to avoid
-        // that the interrupt handler is called in this situation
-        (*_hwserial_module).CTRLA &= (~USART_DREIE_bm);
 
         return 1;
     }
@@ -300,18 +290,18 @@ size_t UartClass::write(uint8_t c)
 	    if (nexthead != _tx_buffer_tail) {
 		_tx_buffer[_tx_buffer_head] = c;
 		_tx_buffer_head = nexthead;
+		// Enable data "register empty interrupt" if it was not already
+		(*_hwserial_module).CTRLA |= USART_DREIE_bm;
 		done = true;
 	    }
 	}
 	if (done) break;
 
-	//The output buffer is full, so there's nothing for it other than to
-	//wait for the interrupt handler to empty it a bit (or emulate interrupts)
+	// The output buffer is full, so there's nothing for it other than to
+	// wait for the interrupt handler to empty it a bit (or emulate interrupts)
+	// Note that USART_DREIE_bm must be set at this time
 	_tx_data_empty_soft();
     }
-
-    // Enable data "register empty interrupt"
-    (*_hwserial_module).CTRLA |= USART_DREIE_bm;
 
     return 1;
 }
