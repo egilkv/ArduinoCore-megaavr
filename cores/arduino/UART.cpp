@@ -132,48 +132,42 @@ void UartClass::begin(unsigned long baud, uint16_t config)
     // without first calling end()
     if(_written) {
         this->end();
+	_written = false;
     }
 
-    // Setup port mux
-    PORTMUX.USARTROUTEA |= _uart_mux;
-
-    int32_t baud_setting = 0;
-
-    //Make sure global interrupts are disabled during initialization
-    uint8_t oldSREG = SREG;
-    cli();
-
-    baud_setting = (((8 * F_CPU_CORRECTED) / baud) + 1) / 2;
-    // Disable CLK2X
-    (*_hwserial_module).CTRLB &= (~USART_RXMODE_CLK2X_gc);
-    (*_hwserial_module).CTRLB |= USART_RXMODE_NORMAL_gc;
-
-    _written = false;
-
+    int32_t baud_setting = (((8 * F_CPU) / baud) + 1) / 2;
     int8_t sigrow_val = SIGROW.OSC16ERR5V;
     baud_setting *= (1024 + sigrow_val);
-    baud_setting /= (1024 - abs(sigrow_val));
+    baud_setting /= 1024;
 
-    // assign the baud_setting, a.k.a. BAUD (USART Baud Rate Register)
-    (*_hwserial_module).BAUD = (int16_t) baud_setting;
+    //Make sure global interrupts are disabled during initialization
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
 
-    // Set USART mode of operation
-    (*_hwserial_module).CTRLC = config;
+	// Setup port mux
+	PORTMUX.USARTROUTEA |= _uart_mux;
 
-    // Enable transmitter and receiver
-    (*_hwserial_module).CTRLB |= (USART_RXEN_bm | USART_TXEN_bm);
+	//Set up the rx pin before we enable the receiver
+	pinMode(_hwserial_rx_pin, INPUT_PULLUP);
+	digitalWrite(_hwserial_tx_pin, HIGH);
 
-    (*_hwserial_module).CTRLA |= USART_RXCIE_bm;
+	// Disable CLK2X
+	(*_hwserial_module).CTRLB &= (~USART_RXMODE_CLK2X_gc);
+	(*_hwserial_module).CTRLB |= USART_RXMODE_NORMAL_gc;
 
-    //Set up the rx pin
-    pinMode(_hwserial_rx_pin, INPUT_PULLUP);
+	// assign the baud_setting, a.k.a. BAUD (USART Baud Rate Register)
+	(*_hwserial_module).BAUD = (int16_t) baud_setting;
 
-    //Set up the tx pin
-    digitalWrite(_hwserial_tx_pin, HIGH);
-    pinMode(_hwserial_tx_pin, OUTPUT);
+	// Set USART mode of operation
+	(*_hwserial_module).CTRLC = config;
 
-    // Restore SREG content
-    SREG = oldSREG;
+	// Enable transmitter and receiver
+	(*_hwserial_module).CTRLB |= (USART_RXEN_bm | USART_TXEN_bm);
+
+	(*_hwserial_module).CTRLA |= USART_RXCIE_bm;
+
+	//Enable the tx pin after we enable transmitter
+	pinMode(_hwserial_tx_pin, OUTPUT);
+    }
 }
 
 void UartClass::end()
