@@ -279,11 +279,9 @@ size_t UartClass::write(uint8_t c)
         return 1;
     }
 
-    // Sorry for the clunkiness of this loop, but it seems to be required to make it atomic
-    // Note that while head for tx is not changed by the tx interrupt, but needs to be atomic
+    // Note that while head for tx is not changed by the tx interrupt, head needs to be atomic
     // in case someone happens to use serial write in another interrupt, so prepare for that
     for (;;) {
-	bool done = false;
 	TX_BUFFER_ATOMIC {
 	    tx_buffer_index_t nexthead;
 	    nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
@@ -292,18 +290,15 @@ size_t UartClass::write(uint8_t c)
 		_tx_buffer_head = nexthead;
 		// Enable data "register empty interrupt" if it was not already
 		(*_hwserial_module).CTRLA |= USART_DREIE_bm;
-		done = true;
+		return 1;
 	    }
 	}
-	if (done) break;
 
 	// The output buffer is full, so there's nothing for it other than to
 	// wait for the interrupt handler to empty it a bit (or emulate interrupts)
 	// Note that USART_DREIE_bm must be set at this time
 	_tx_data_empty_soft();
     }
-
-    return 1;
 }
 
 #endif // whole file
