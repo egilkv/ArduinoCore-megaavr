@@ -262,26 +262,24 @@ void UartClass::flush()
 
 size_t UartClass::write(uint8_t c)
 {
-    _written = true;
-
-    // If the buffer and the data register is empty, just write the byte
-    // to the data register and be done. This shortcut helps
-    // significantly improve the effective data rate at high (>
-    // 500kbit/s) bit rates, where interrupt overhead becomes a slowdown.
-    // Note also that USART_DREIE_bm always will be clear if the buffer is
-    // empty.
-    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-	if ( !((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
-	    (*_hwserial_module).TXDATAL = c;
-	    (*_hwserial_module).STATUS = USART_TXCIF_bm;
-
-	    return 1;
-	}
-    }
-
-    // Note that while head for tx is not changed by the tx interrupt, head needs to be atomic
-    // in case someone happens to use serial write in another interrupt, so prepare for that
     for (;;) {
+	// If the buffer and the data register is empty, just write the byte
+	// to the data register and be done. This shortcut helps
+	// significantly improve the effective data rate at high (>
+	// 500kbit/s) bit rates, where interrupt overhead becomes a slowdown.
+	// Note also that USART_DREIE_bm always will be clear if the buffer is
+	// empty.
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+	    if ( !((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
+		(*_hwserial_module).TXDATAL = c;
+		(*_hwserial_module).STATUS = USART_TXCIF_bm;
+		_written = true;
+		return 1;
+	    }
+	}
+
+	// Note that while head for tx is not changed by the tx interrupt, head needs to be atomic
+	// in case someone happens to use serial write in another interrupt, so prepare for that
 	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { // was TX_BUFFER_ATOMIC
 	    tx_buffer_index_t nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
 	    if (nexthead != _tx_buffer_tail) {
@@ -295,7 +293,7 @@ size_t UartClass::write(uint8_t c)
 	}
 
 	// The output buffer is full, so there's nothing else to do than to spin
-	// here waiting for some room in the  buffer to become available
+	// here waiting for some room in the buffer to become available
 	// Note that USART_DREIE_bm is assumed to be set at this time
 	_poll_tx_data_empty();
     }
