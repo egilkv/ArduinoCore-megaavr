@@ -115,11 +115,13 @@ void UartClass::_poll_tx_data_empty(void) {
     // Note: Testing the SREG I-bit here would only check if interrupts are disabled
     // globally, and would not establish if this call was via an interrupt of some 
     // description. It is thus better to turn off interrupts globally (using an
-    // ATOMIC BLOCK) for a while and always poll the DRE bits
+    // ATOMIC BLOCK) and always poll the DRE bits
 
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
 	// Call the handler only if data register is empty and we know the buffer is non-empty
-	// by checking the status of the corresponding interrupt enable
+	// by checking the status of the corresponding interrupt enable. 
+	// Note that the re-check of DREIE within the zone is required although it may have
+	// been checked earlier.
 	if (((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm)) {
 	   _tx_data_empty_irq();
 	}
@@ -276,11 +278,9 @@ size_t UartClass::write(uint8_t c)
 		_written = true;
 		return 1;
 	    }
-	}
 
-	// Note that while head for tx is not changed by the tx interrupt, head needs to be atomic
-	// in case someone happens to use serial write in another interrupt, so prepare for that
-	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { // was TX_BUFFER_ATOMIC
+	    // ...if we want to reduce the length of the critical zone, we could interrupt it here...
+
 	    tx_buffer_index_t nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
 	    if (nexthead != _tx_buffer_tail) {
 		_tx_buffer[_tx_buffer_head] = c;
