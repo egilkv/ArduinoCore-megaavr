@@ -116,6 +116,7 @@ void UartClass::_poll_tx_data_empty(void) {
     // globally, and would not establish if this call was via an interrupt of some 
     // description. It is thus better to turn off interrupts globally (using an
     // ATOMIC BLOCK) for a while and always poll the DRE bits
+
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
 	// Call the handler only if data register is empty and we know the buffer is non-empty
 	// by checking the status of the corresponding interrupt enable
@@ -269,17 +270,19 @@ size_t UartClass::write(uint8_t c)
     // 500kbit/s) bit rates, where interrupt overhead becomes a slowdown.
     // Note also that USART_DREIE_bm always will be clear if the buffer is
     // empty.
-    if ( !((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
-        (*_hwserial_module).TXDATAL = c;
-        (*_hwserial_module).STATUS = USART_TXCIF_bm;
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+	if ( !((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
+	    (*_hwserial_module).TXDATAL = c;
+	    (*_hwserial_module).STATUS = USART_TXCIF_bm;
 
-        return 1;
+	    return 1;
+	}
     }
 
     // Note that while head for tx is not changed by the tx interrupt, head needs to be atomic
     // in case someone happens to use serial write in another interrupt, so prepare for that
     for (;;) {
-	TX_BUFFER_ATOMIC {
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { // was TX_BUFFER_ATOMIC
 	    tx_buffer_index_t nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
 	    if (nexthead != _tx_buffer_tail) {
 		_tx_buffer[_tx_buffer_head] = c;
@@ -291,9 +294,9 @@ size_t UartClass::write(uint8_t c)
 	    }
 	}
 
-	// The output buffer is full, so there's nothing for it other than to
-	// wait for the interrupt handler to empty it a bit (or emulate interrupts)
-	// Note that USART_DREIE_bm must be set at this time
+	// The output buffer is full, so there's nothing else to do than to spin
+	// here waiting for some room in the  buffer to become available
+	// Note that USART_DREIE_bm is assumed to be set at this time
 	_poll_tx_data_empty();
     }
 }
