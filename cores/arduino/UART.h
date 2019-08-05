@@ -33,11 +33,9 @@
 // location from which to read.
 // NOTE: a "power of 2" buffer size is reccomended to dramatically
 //       optimize all the modulo operations for ring buffers.
-// WARNING: When buffer sizes are increased to > 256, the buffer index
-// variables are automatically increased in size, but the extra
-// atomicity guards needed for that are not implemented. This will
-// often work, but occasionally a race condition can occur that makes
-// Serial behave erratically. See https://github.com/arduino/Arduino/issues/2405
+// When buffer sizes are increased to > 256, the buffer index
+// variables are automatically increased in size, and extra
+// atomicity guards are implemented.
 #if !defined(SERIAL_TX_BUFFER_SIZE)
 #if ((RAMEND - RAMSTART) < 1023)
 #define SERIAL_TX_BUFFER_SIZE 16
@@ -138,10 +136,6 @@ class UartClass : public HardwareSerial
     volatile tx_buffer_index_t _tx_buffer_head;
     volatile tx_buffer_index_t _tx_buffer_tail;
 
-    volatile uint8_t _hwserial_dre_interrupt_vect_num;
-    volatile uint8_t _hwserial_dre_interrupt_elevated;
-    volatile uint8_t _prev_lvl1_interrupt_vect;
-
     // Don't put any members after these buffers, since only the first
     // 32 bytes of this struct can be accessed quickly using the ldd
     // instruction.
@@ -149,7 +143,7 @@ class UartClass : public HardwareSerial
     unsigned char _tx_buffer[SERIAL_TX_BUFFER_SIZE];
 
   public:
-    inline UartClass(volatile USART_t *hwserial_module, uint8_t hwserial_rx_pin, uint8_t hwserial_tx_pin, uint8_t dre_vect_num, uint8_t uart_mux);
+    inline UartClass(volatile USART_t *hwserial_module, uint8_t hwserial_rx_pin, uint8_t hwserial_tx_pin, uint8_t uart_mux);
     void begin(unsigned long baud) { begin(baud, SERIAL_8N1); }
     void begin(unsigned long, uint16_t);
     void end();
@@ -170,7 +164,7 @@ class UartClass : public HardwareSerial
     inline void _rx_complete_irq(void);
     void _tx_data_empty_irq(void);
   private:
-    void _tx_data_empty_soft(void);
+    void _poll_tx_data_empty(void);
 };
 
 #if defined(HWSERIAL0)
