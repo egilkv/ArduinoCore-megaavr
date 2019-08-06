@@ -31,6 +31,23 @@
 #include "UART.h"
 #include "UART_private.h"
 
+//
+// This library is for the megaAVR series. Besides the UARTs being different per se, there
+// are also some important differences to regular AVR that should be noted:
+//
+// 1. In interrupts, the megaAVR does not turn off the I-bit of the STATUS register.
+//    Instead, it is the interrupt controller that manages interrupt stacking, and
+//    prevents interrupts from being interrupted. This means that the I-bit cannot
+//    be tested to check if we are running in an interrupt.
+//
+// 2. The megaAVR has two regular interrupt levels. The normal Arduino only seems to
+//    utilize the lower level, and we assume that anyone that implements code to use
+//    the higher level does not invoke any method in Serial.
+//
+// 3. Manipulation of single UART control bits cannot be performed with a single
+//    instruction. This means that they are significantly more costly, and not atomic.
+//
+
 // this next line disables the entire UART.cpp,
 // this is so I can support Attiny series and any other chip without a uart
 #if defined(HAVE_HWSERIAL0) || defined(HAVE_HWSERIAL1) || defined(HAVE_HWSERIAL2) || defined(HAVE_HWSERIAL3)
@@ -280,7 +297,8 @@ size_t UartClass::write(uint8_t c)
                 return 1;
             }
 
-            // ...if we want to reduce the length of the critical zone, we could interrupt it here...
+            // ...if we want to reduce the length of the critical zone, we could end
+            // the above one here and have the "for" and a new zone begin here...
 
             tx_buffer_index_t nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
             if (nexthead != _tx_buffer_tail) {
