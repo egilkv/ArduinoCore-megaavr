@@ -137,7 +137,7 @@ void UartClass::begin(unsigned long baud, uint16_t config)
     // without first calling end()
     if(_written) {
         this->end();
-	_written = false;
+        _written = false;
     }
 
     int32_t baud_setting = (((8 * F_CPU) / baud) + 1) / 2;
@@ -148,30 +148,30 @@ void UartClass::begin(unsigned long baud, uint16_t config)
     //Make sure global interrupts are disabled during initialization
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
 
-	// Setup port mux
-	PORTMUX.USARTROUTEA |= _uart_mux;
+        // Setup port mux
+        PORTMUX.USARTROUTEA |= _uart_mux;
 
-	//Set up the rx pin before we enable the receiver
-	pinMode(_hwserial_rx_pin, INPUT_PULLUP);
-	digitalWrite(_hwserial_tx_pin, HIGH);
+        //Set up the rx pin before we enable the receiver
+        pinMode(_hwserial_rx_pin, INPUT_PULLUP);
+        digitalWrite(_hwserial_tx_pin, HIGH);
 
-	// Disable CLK2X
-	(*_hwserial_module).CTRLB &= (~USART_RXMODE_CLK2X_gc);
-	(*_hwserial_module).CTRLB |= USART_RXMODE_NORMAL_gc;
+        // Disable CLK2X
+        (*_hwserial_module).CTRLB &= (~USART_RXMODE_CLK2X_gc);
+        (*_hwserial_module).CTRLB |= USART_RXMODE_NORMAL_gc;
 
-	// assign the baud_setting, a.k.a. BAUD (USART Baud Rate Register)
-	(*_hwserial_module).BAUD = (int16_t) baud_setting;
+        // assign the baud_setting, a.k.a. BAUD (USART Baud Rate Register)
+        (*_hwserial_module).BAUD = (int16_t) baud_setting;
 
-	// Set USART mode of operation
-	(*_hwserial_module).CTRLC = config;
+        // Set USART mode of operation
+        (*_hwserial_module).CTRLC = config;
 
-	// Enable transmitter and receiver
-	(*_hwserial_module).CTRLB |= (USART_RXEN_bm | USART_TXEN_bm);
+        // Enable transmitter and receiver
+        (*_hwserial_module).CTRLB |= (USART_RXEN_bm | USART_TXEN_bm);
 
-	(*_hwserial_module).CTRLA |= USART_RXCIE_bm;
+        (*_hwserial_module).CTRLA |= USART_RXCIE_bm;
 
-	//Enable the tx pin after we enable transmitter
-	pinMode(_hwserial_tx_pin, OUTPUT);
+        //Enable the tx pin after we enable transmitter
+        pinMode(_hwserial_tx_pin, OUTPUT);
     }
 }
 
@@ -181,14 +181,14 @@ void UartClass::end()
     flush();
 
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-	// Disable receiver and transmitter as well as the RX complete and
-	// data register empty interrupts.
-	(*_hwserial_module).CTRLB &= ~(USART_RXEN_bm | USART_TXEN_bm);
-	(*_hwserial_module).CTRLA &= ~(USART_RXCIE_bm | USART_DREIE_bm);
-	// clear any received data not read yet
-	_rx_buffer_head = _rx_buffer_tail;
+        // Disable receiver and transmitter as well as the RX complete and
+        // data register empty interrupts.
+        (*_hwserial_module).CTRLB &= ~(USART_RXEN_bm | USART_TXEN_bm);
+        (*_hwserial_module).CTRLA &= ~(USART_RXCIE_bm | USART_DREIE_bm);
+        // clear any received data not read yet
+        _rx_buffer_head = _rx_buffer_tail;
 
-	_written = false;
+        _written = false;
     }
     // Note: Does not change output pins
 }
@@ -197,7 +197,7 @@ int UartClass::available(void)
 {
     int n;
     RX_BUFFER_ATOMIC {
-	n = ((unsigned int)(SERIAL_RX_BUFFER_SIZE + _rx_buffer_head - _rx_buffer_tail)) % SERIAL_RX_BUFFER_SIZE;
+        n = ((unsigned int)(SERIAL_RX_BUFFER_SIZE + _rx_buffer_head - _rx_buffer_tail)) % SERIAL_RX_BUFFER_SIZE;
     }
     return n;
 }
@@ -206,11 +206,11 @@ int UartClass::peek(void)
 {
     int c;
     RX_BUFFER_ATOMIC {
-	if (_rx_buffer_head == _rx_buffer_tail) {
-	    c = -1;
-	} else {
-	    c = _rx_buffer[_rx_buffer_tail];
-	}
+        if (_rx_buffer_head == _rx_buffer_tail) {
+            c = -1;
+        } else {
+            c = _rx_buffer[_rx_buffer_tail];
+        }
     }
     return c;
 }
@@ -219,13 +219,13 @@ int UartClass::read(void)
 {
     int c;
     RX_BUFFER_ATOMIC {
-	// if the head isn't ahead of the tail, we don't have any characters
-	if (_rx_buffer_head == _rx_buffer_tail) {
-	    c = -1;
-	} else {
-	    c = _rx_buffer[_rx_buffer_tail];
-	    _rx_buffer_tail = (rx_buffer_index_t)(_rx_buffer_tail + 1) % SERIAL_RX_BUFFER_SIZE;
-	}
+        // if the head isn't ahead of the tail, we don't have any characters
+        if (_rx_buffer_head == _rx_buffer_tail) {
+            c = -1;
+        } else {
+            c = _rx_buffer[_rx_buffer_tail];
+            _rx_buffer_tail = (rx_buffer_index_t)(_rx_buffer_tail + 1) % SERIAL_RX_BUFFER_SIZE;
+        }
     }
     return c;
 }
@@ -266,37 +266,37 @@ void UartClass::flush()
 size_t UartClass::write(uint8_t c)
 {
     for (;;) {
-	// If the buffer and the data register is empty, just write the byte
-	// to the data register and be done. This shortcut helps
-	// significantly improve the effective data rate at high (>
-	// 500kbit/s) bit rates, where interrupt overhead becomes a slowdown.
-	// Note also that USART_DREIE_bm always will be clear if the buffer is
-	// empty.
-	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-	    if ( !((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
-		(*_hwserial_module).TXDATAL = c;
-		(*_hwserial_module).STATUS = USART_TXCIF_bm;
-		_written = true;
-		return 1;
-	    }
+        // If the buffer and the data register is empty, just write the byte
+        // to the data register and be done. This shortcut helps
+        // significantly improve the effective data rate at high (>
+        // 500kbit/s) bit rates, where interrupt overhead becomes a slowdown.
+        // Note also that USART_DREIE_bm always will be clear if the buffer is
+        // empty.
+        ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+            if ( !((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm) ) {
+                (*_hwserial_module).TXDATAL = c;
+                (*_hwserial_module).STATUS = USART_TXCIF_bm;
+                _written = true;
+                return 1;
+            }
 
-	    // ...if we want to reduce the length of the critical zone, we could interrupt it here...
+            // ...if we want to reduce the length of the critical zone, we could interrupt it here...
 
-	    tx_buffer_index_t nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
-	    if (nexthead != _tx_buffer_tail) {
-		_tx_buffer[_tx_buffer_head] = c;
-		_tx_buffer_head = nexthead;
-		// Enable data "register empty interrupt" if it was not already
-		// (not atomic)
-		(*_hwserial_module).CTRLA |= USART_DREIE_bm;
-		return 1;
-	    }
-	}
+            tx_buffer_index_t nexthead = (_tx_buffer_head + 1) % SERIAL_TX_BUFFER_SIZE;
+            if (nexthead != _tx_buffer_tail) {
+                _tx_buffer[_tx_buffer_head] = c;
+                _tx_buffer_head = nexthead;
+                // Enable data "register empty interrupt" if it was not already
+                // (not atomic)
+                (*_hwserial_module).CTRLA |= USART_DREIE_bm;
+                return 1;
+            }
+        }
 
-	// The output buffer is full, so there's nothing else to do than to spin
-	// here waiting for some room in the buffer to become available
-	// Note that USART_DREIE_bm is assumed to be set at this time
-	_poll_tx_data_empty();
+        // The output buffer is full, so there's nothing else to do than to spin
+        // here waiting for some room in the buffer to become available
+        // Note that USART_DREIE_bm is assumed to be set at this time
+        _poll_tx_data_empty();
     }
 }
 
