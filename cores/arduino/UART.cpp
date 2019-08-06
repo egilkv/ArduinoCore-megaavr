@@ -111,20 +111,21 @@ void UartClass::_tx_data_empty_irq(void)
 }
 
 // To invoke data empty "interrupt" via a call, use this method
-void UartClass::_poll_tx_data_empty(void) {
+void UartClass::_poll_tx_data_empty(void) 
+{
     // Note: Testing the SREG I-bit here would only check if interrupts are disabled
     // globally, and would not establish if this call was via an interrupt of some 
     // description. It is thus better to turn off interrupts globally (using an
     // ATOMIC BLOCK) and always poll the DRE bits
 
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-	// Call the handler only if data register is empty and we know the buffer is non-empty
-	// by checking the status of the corresponding interrupt enable. 
-	// Note that the re-check of DREIE within the zone is required although it may have
-	// been checked earlier.
-	if (((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm)) {
-	   _tx_data_empty_irq();
-	}
+        // Call the handler only if data register is empty and we know the buffer is non-empty
+        // by checking the status of the corresponding interrupt enable. 
+        // Note that the re-check of DREIE within the zone is required although it may have
+        // been checked earlier.
+        if (((*_hwserial_module).CTRLA & USART_DREIE_bm) && ((*_hwserial_module).STATUS & USART_DREIF_bm)) {
+            _tx_data_empty_irq();
+        }
     }
 }
 
@@ -256,7 +257,7 @@ void UartClass::flush()
 
         // If interrupts are globally disabled or the and DR empty interrupt is disabled,
         // poll the "data register empty" interrupt flag to prevent deadlock
-	_poll_tx_data_empty();
+        _poll_tx_data_empty();
     }
     // If we get here, nothing is queued anymore (DREIE is disabled) and
     // the hardware finished transmission (TXCIF is set).
