@@ -272,8 +272,6 @@ void UartClass::flush()
     // Spin until the data-register-empty-interrupt is disabled and TX complete interrupt flag is raised
     while ( ((*_hwserial_module).CTRLA & USART_DREIE_bm) || (!((*_hwserial_module).STATUS & USART_TXCIF_bm)) ) {
 
-        // If interrupts are globally disabled or the and DR empty interrupt is disabled,
-        // poll the "data register empty" interrupt flag to prevent deadlock
         _poll_tx_data_empty();
     }
     // If we get here, nothing is queued anymore (DREIE is disabled) and
@@ -313,7 +311,6 @@ size_t UartClass::write(uint8_t c)
 
         // The output buffer is full, so there's nothing else to do than to spin
         // here waiting for some room in the buffer to become available
-        // Note that USART_DREIE_bm is assumed to be set at this time
         _poll_tx_data_empty();
     }
 }
